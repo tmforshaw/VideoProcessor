@@ -58,7 +58,7 @@ def get_time_period(positions, plt):
     filtered_diff = consecutive_diff[np.where(consecutive_diff > 10)]
     period = np.sum(filtered_diff) / (len(filtered_diff) * fps)
 
-    plt.text(len(positions[0])/fps * 0.85,min(positions[0]) * 0.8, f"$T_0 = {{{period:.3f}}}\,s$")
+    plt.text(len(positions[0])/fps * 0.8, min(positions[0]) * 0.8, f"$T_0 = {{{period:.3f}}}\,s$", fontsize='x-large')
 
 def get_peak_indices(position):
     epsilon = 120
@@ -121,12 +121,21 @@ def plot_data(positions, stddev, filename):
     
     x_positions = [np.convolve(pos[:,1], np.ones(conv_width), 'valid') / conv_width for pos in positions]
 
+    # Font Sizes
+
+    fontsize = 14
+    plt.rc('font', size=fontsize) #controls default text size
+    plt.rc('axes', titlesize=fontsize) #fontsize of the title
+    plt.rc('axes', labelsize=fontsize) #fontsize of the x and y labels
+    plt.rc('xtick', labelsize=fontsize) #fontsize of the x tick labels
+    plt.rc('ytick', labelsize=fontsize) #fontsize of the y tick labels
+    plt.rc('legend', fontsize=fontsize) #fontsize of the legend
+
     # fig, subplots = plt.subplots(2,1)
     (fig, subplot) = plt.subplots(1,1)
     fig.suptitle(f"Analysis of {filename}", x=0.518, y=0.98 , horizontalalignment="center")
     fig.set_size_inches((1920 / 100, 1080 / 100), forward=True)
     fig.set_dpi(120)
-    fig.tight_layout(pad=2.0)
     # plt.figlegend(ncols=len(x_positions) / 2, bbox_to_anchor=(1, 0.5), markerscale=10000, alignment="center", framealpha=1)
 
     epsilon = ball_width_pixels * 0.5
@@ -179,23 +188,23 @@ def plot_data(positions, stddev, filename):
         col = colour_from_index(i)
 
         ## Absolute positions of the balls
-        subplot.plot(t, x_positions[i], '-', label="Ball {i} Position".format(i=i+1), color=col, lw=1)
+        # subplot.plot(t, x_positions[i], '-', label="Ball {i} Position".format(i=i+1), color=col, lw=1)
         # subplot.fill_between(t, x_positions[i] - ball_width_pixels/2, x_positions[i] + ball_width_pixels/2, color=col, alpha=0.25)
         
-        # subplot.plot(t, equilibrium_positions[i], '-', label="Ball {i} Position".format(i=i+1), color=col, lw=1)
+        subplot.plot(t, equilibrium_positions[i], '-', label="Ball {i} Displacement".format(i=i+1), color=col, lw=1)
         # subplot.fill_between(t, bottom_stddev[i], top_stddev[i], color=col, alpha=0.25)
 
     subplot.set_title("$x$-Displacement Over Time")
     subplot.set_xlabel("$t$ [s]")
     subplot.set_ylabel("$x$-Displacement [m]")
-    subplot.legend(ncols=len(x_positions))
+    subplot.legend(ncols=len(equilibrium_positions))
     subplot.margins(x=0.01, y=0.01, tight=True)
     subplot.set_xticks(np.arange(t[0], t[-1]+time_step, step=time_step))
 
-    # Time period stuff
     get_time_period(equilibrium_positions, subplot)
 
-    fig.savefig(f"{filename}-positions.jpg")
+    fig.tight_layout(pad=2.0)
+    fig.savefig(f"{filename}-positions.pdf")
 
     plt.figure(1)
     (fig, subplot) = plt.subplots(1,1)
@@ -275,7 +284,8 @@ def plot_data(positions, stddev, filename):
     # limit = 0.005
     # subplots[2].set_ylim(-limit, limit)
 
-    fig.savefig(f"{filename}-energies.jpg")
+    fig.tight_layout(pad=2.0)
+    fig.savefig(f"{filename}-energies.pdf")
     plt.show()
 
 plot_data(*parse_json())

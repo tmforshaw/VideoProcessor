@@ -1,0 +1,340 @@
+use crate::{
+    colour::{enum_to_bitmap, get_channel_and_others, Colour},
+    error::ProcessorError,
+    DRAW_BORDER, DRAW_CENTRAL_REGION, FILL_UNHIGHLIGHTED, WRITE_TO_VIDEO,
+};
+use itertools::Itertools;
+use lazy_static::lazy_static;
+use rayon::prelude::{IntoParallelIterator, ParallelIterator};
+use std::{cmp::Ordering, process};
+
+lazy_static! {
+    pub static ref ALL_COLOURS: Vec<Colour> = vec![
+        Colour::GREEN,
+        Colour::RED,
+        Colour::YELLOW,
+        Colour::RED,
+        Colour::GREEN,
+    ];
+    pub static ref EPSILON_THRESHOLD: Vec<(u8, u8)> = vec![(35, 25), (60, 50), (90, 80)];
+    pub static ref SELECTED_BITMAPS: Vec<[bool; 3]> = ALL_COLOURS
+        .iter()
+        .map(|&colour| enum_to_bitmap(colour))
+        .collect();
+    pub static ref SELECTED_VALUES: Vec<(Vec<usize>, Vec<usize>, Vec<u8>)> = SELECTED_BITMAPS
+        .iter()
+        .map(|bitmap| match get_channel_and_others(bitmap) {
+            Ok(tup) => tup,
+            Err(err) => {
+                eprintln!("{err:?}");
+                process::exit(0x1000);
+            }
+        })
+        .collect();
+    pub static ref SYMMETRY_AROUND: usize = {
+        let mut rest = ALL_COLOURS.clone();
+        let mut test = vec![];
+        ALL_COLOURS.iter().for_each(|&x| {
+            if !test.contains(&(true, x)) && !test.contains(&(false, x)) {
+                test.push((true, x));
+                rest.remove(
+                    if let Some((value, _)) = rest.iter().find_position(|&&y| y == x) {
+                        value
+                    } else {
+                        eprintln!("Could not find centre of symmetry");
+                        process::exit(0x1000);
+                    },
+                );
+
+                if rest.contains(&x) {
+                    test.pop();
+                    test.push((false, x));
+                }
+            }
+        });
+
+        test.iter()
+            .filter_map(|&(keep, x)| keep.then_some(x))
+            .filter_map(|col| {
+                let Some((index, _)) = ALL_COLOURS.iter().find_position(|&&y| y == col) else {
+                    return None;
+                };
+
+                (index > 0
+                    && index < ALL_COLOURS.len() - 1
+                    && ALL_COLOURS[index - 1] == ALL_COLOURS[index + 1])
+                    .then_some(index)
+            })
+            .collect::<Vec<usize>>()[0]
+    };
+}
+
+pub static BORDERS: (usize, usize, usize, usize) = (30, 120, 30, 120); // Left    Top    Right    Bottom
+pub static CIRC_RADIUS: usize = 18;
+pub static CIRC_INNER_RADIUS: usize = 4;
+
+pub fn find_highlighted_pixels(
+    image: &mut ndarray::ArrayBase<ndarray::OwnedRepr<u8>, ndarray::Dim<[usize; 3]>>,
+    image_size: (u32, u32),
+) -> Result<Vec<(usize, Vec<(usize, usize)>)>, ProcessorError> {
+    let highlighted_pixels = ndarray::Zip::indexed(image.rows_mut())
+        .into_par_iter()
+        .map(|(i, mut pix)| {
+            let max_colours: Vec<Option<((usize, usize), u8, u8)>> = SELECTED_VALUES
+                .iter()
+                .take(ALL_COLOURS.len() / 2 + 1)
+                .enumerate()
+                .map(|(colour_index, (selected_channels, other_channels, _))| {
+                    if (BORDERS.1..=(image_size.1 as usize) - BORDERS.3).contains(&i.0)
+                        && (BORDERS.0..=(image_size.0 as usize) - BORDERS.2).contains(&i.1)
+                        && matches!(TryInto::<Colour>::try_into(colour_index), Ok(Colour::GREEN))
+                    {
+                        let horizontal_segment_index =
+                            ((i.1 - BORDERS.0) * (ALL_COLOURS.len() + 1) * 2)
+                                / (image_size.0 as usize - BORDERS.0 - BORDERS.2);
+
+                        if (4..=7).contains(&horizontal_segment_index) {
+                            if DRAW_CENTRAL_REGION {
+                                (pix[0], pix[1], pix[2]) = (255, 255, 255);
+                            }
+
+                            return Ok(None);
+                        }
+
+                        match selected_channels.len() {
+                            1 => {
+                                let balanced_others = (pix[other_channels[0]] / 2)
+                                    .saturating_add(pix[other_channels[1]] / 2);
+
+                                Ok((balanced_others
+                                    < pix[selected_channels[0]]
+                                        .saturating_sub(EPSILON_THRESHOLD[colour_index].1)
+                                    && pix[selected_channels[0]]
+                                        > EPSILON_THRESHOLD[colour_index].0)
+                                    .then_some((
+                                        i,
+                                        pix[selected_channels[0]]
+                                            .saturating_sub(EPSILON_THRESHOLD[colour_index].1),
+                                        balanced_others,
+                                    )))
+                            }
+                            2 => {
+                                let balanced = (pix[selected_channels[0]] / 2)
+                                    .saturating_add(pix[selected_channels[1]] / 2);
+
+                                Ok((pix[other_channels[0]]
+                                    < balanced.saturating_sub(EPSILON_THRESHOLD[colour_index].1)
+                                    && balanced > EPSILON_THRESHOLD[colour_index].0)
+                                    .then_some((i, balanced, pix[other_channels[0]])))
+                            }
+                            amt => Err(ProcessorError::TooManyChannelsErr { channel_amt: amt }),
+                        }
+                    } else {
+                        // Output for outside of border
+                        if DRAW_BORDER && WRITE_TO_VIDEO {
+                            (pix[0], pix[1], pix[2]) = (255, 255, 255);
+                        }
+
+                        Ok(None)
+                    }
+                })
+                .collect::<Result<Vec<Option<((usize, usize), u8, u8)>>, ProcessorError>>()?;
+
+            let max_colour = max_colours
+                .iter()
+                .filter_map(|&x| x)
+                .max_by_key(|&(_, selected, others)| selected.saturating_sub(others));
+
+            println!("{max_colour:?}");
+
+            let max_colour = max_colours
+                .iter()
+                .enumerate()
+                .filter_map(|(i, x)| x.map(|tup| (i, tup)))
+                .max_by_key(|&(_, x)| x.1.saturating_sub(x.2));
+
+            println!("{max_colour:?}");
+
+            if let Some((i, (pix_pos, _, _))) = max_colour {
+                let set_colour = SELECTED_VALUES[i].2.clone();
+
+                // Highlight selected pixels
+                if WRITE_TO_VIDEO {
+                    (pix[0], pix[1], pix[2]) = (set_colour[0], set_colour[1], set_colour[2]);
+                }
+
+                Ok(Some((i, pix_pos)))
+            } else {
+                // Colour for unmatched pixels
+                if WRITE_TO_VIDEO && FILL_UNHIGHLIGHTED {
+                    (pix[0], pix[1], pix[2]) = (0, 0, 0);
+                }
+
+                Ok(None)
+            }
+        })
+        .collect::<Result<Vec<Option<(usize, (usize, usize))>>, ProcessorError>>()?;
+
+    Ok(highlighted_pixels
+        .iter()
+        .filter_map(|&x| x)
+        .group_by(|&(key, _)| key)
+        .into_iter()
+        .map(|(key, group)| (key, group.map(|(_, value)| value).collect_vec()))
+        .collect_vec())
+}
+
+pub fn get_avg_pos(
+    highlighted_pixels: &[(usize, Vec<(usize, usize)>)],
+    image_size: (u32, u32),
+) -> Vec<(usize, usize)> {
+    highlighted_pixels
+        .iter()
+        .fold(
+            vec![(0, (0, 0)); ALL_COLOURS.len()],
+            |mut acc, (key, positions)| {
+                for (y, x) in positions {
+                    // If index is less than centre of symmetry (First half of balls since colours are symmetric)
+                    match (key).cmp(&SYMMETRY_AROUND) {
+                        Ordering::Less => {
+                            // If current key is not for symmetric centre, then split based on which half of the screen the colour is
+                            if x < &(image_size.0 as usize / 2) {
+                                acc[*key].1 .0 += y;
+                                acc[*key].1 .1 += x;
+
+                                // Counts
+                                acc[*key].0 += 1;
+                            } else {
+                                // Add to symmetric partner (if there is one)
+                                let new_key = 2 * *SYMMETRY_AROUND - *key;
+                                if new_key < ALL_COLOURS.len() {
+                                    acc[new_key].1 .0 += y;
+                                    acc[new_key].1 .1 += x;
+
+                                    // Counts
+                                    acc[new_key].0 += 1;
+                                }
+                            }
+                        }
+                        Ordering::Equal => {
+                            acc[*key].1 .0 += y;
+                            acc[*key].1 .1 += x;
+
+                            // Counts
+                            acc[*key].0 += 1;
+                        }
+                        Ordering::Greater => {
+                            // Do nothing
+                        }
+                    };
+                }
+
+                acc
+            },
+        )
+        .iter()
+        .enumerate()
+        .fold(
+            vec![(0, 0); ALL_COLOURS.len()],
+            |mut acc, (pos_index, &(n_pos, (y, x)))| {
+                if n_pos != 0 {
+                    acc[pos_index].0 = y.saturating_div(n_pos);
+                    acc[pos_index].1 = x.saturating_div(n_pos);
+                };
+
+                acc
+            },
+        )
+}
+
+pub fn get_stddev(
+    avg_pos: &[(usize, usize)],
+    highlighted_pixels: &[(usize, Vec<(usize, usize)>)],
+    image_size: (u32, u32),
+) -> Vec<usize> {
+    highlighted_pixels
+        .iter()
+        .fold(
+            vec![(0, 0); ALL_COLOURS.len()],
+            |mut acc, (key, positions)| {
+                for (y, x) in positions {
+                    let mut index = *key;
+
+                    if *key < *SYMMETRY_AROUND && x >= &(image_size.0 as usize / 2) {
+                        let new_key = 2 * *SYMMETRY_AROUND - key;
+                        if new_key < ALL_COLOURS.len() {
+                            index = new_key;
+                        }
+                    }
+
+                    // if Into::<Colour>::into(key) != ALL_COLOURS[ALL_COLOURS.len().div_ceil(2) - 1]
+                    //     && ALL_COLOURS.len() % 2 == 1
+                    //     && x >= image_size.0 as usize / 2
+                    // {
+                    //     index = ALL_COLOURS.len() - key - 1;
+                    // }
+
+                    acc[index].0 += (x - avg_pos[index].1).pow(2) + (y - avg_pos[index].0).pow(2);
+                    acc[index].1 += 1;
+                }
+
+                acc
+            },
+        )
+        .into_par_iter()
+        .map(|(diff, n)| {
+            if n != 0 {
+                (diff.saturating_div(n) as f32).sqrt() as usize
+            } else {
+                diff
+            }
+        })
+        .collect::<Vec<usize>>()
+}
+
+pub fn process(
+    input_image: ndarray::ArrayBase<ndarray::OwnedRepr<u8>, ndarray::Dim<[usize; 3]>>,
+    image_size: (u32, u32),
+) -> Result<
+    (
+        ndarray::ArrayBase<ndarray::OwnedRepr<u8>, ndarray::Dim<[usize; 3]>>,
+        Vec<(usize, usize)>,
+        Vec<usize>,
+    ),
+    ProcessorError,
+> {
+    let mut image = input_image;
+    let highlighted_pixels = find_highlighted_pixels(&mut image, image_size)?;
+    let avg_pos = get_avg_pos(&highlighted_pixels, image_size);
+    let stddev = get_stddev(&avg_pos, &highlighted_pixels, image_size);
+
+    // Draw avg_pos for each colour --------------------------------------------------------
+    if WRITE_TO_VIDEO {
+        ndarray::Zip::indexed(image.rows_mut()).par_for_each(|i, mut pix| {
+            avg_pos.iter().enumerate().for_each(|(pos_index, &(y, x))| {
+                let colour = SELECTED_VALUES[pos_index].2.clone();
+
+                let circ_rad = ((i.1 as isize - x as isize).saturating_pow(2))
+                    .saturating_add((i.0 as isize - y as isize).saturating_pow(2))
+                    as usize;
+
+                if circ_rad < CIRC_RADIUS.saturating_pow(2)
+                    && circ_rad > (CIRC_RADIUS - CIRC_INNER_RADIUS).saturating_pow(2)
+                {
+                    (pix[0], pix[1], pix[2]) = (colour[0] / 2, colour[1] / 2, colour[2] / 2);
+                }
+            });
+
+            // match i.1 {
+            //     147 | 186 | 219 | 255 | 291 => (pix[0], pix[1], pix[2]) = (255, 255, 255),
+            //     _ => {}
+            // }
+
+            if i.1 == avg_pos[*SYMMETRY_AROUND].1 {
+                (pix[0], pix[1], pix[2]) = (255, 255, 255);
+            }
+        });
+    }
+
+    Ok((image, avg_pos, stddev))
+}

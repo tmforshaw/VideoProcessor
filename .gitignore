@@ -1,0 +1,5 @@
+# Exclude all directorires except specified
+/*
+!/src
+!README.md
+!Cargo.toml

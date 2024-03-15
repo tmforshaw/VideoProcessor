@@ -9,7 +9,7 @@ use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use std::{cmp::Ordering, process};
 
 pub static BORDERS: (usize, usize, usize, usize) = (30, 120, 30, 120); // Left    Top    Right    Bottom
-pub static CIRC_RADIUS: usize = 25; // 18
+pub static CIRC_RADIUS: usize = 18; // 18
 pub static CIRC_INNER_RADIUS: usize = 4;
 lazy_static! {
     pub static ref ALL_COLOURS: Vec<Colour> = vec![
@@ -20,7 +20,6 @@ lazy_static! {
         Colour::BLUE,
     ];
     pub static ref EPSILON_THRESHOLD: Vec<(u8, u8)> = vec![(40, 25), (50, 40), (80, 70)];
-    // pub static ref EPSILON_THRESHOLD: Vec<(u8, u8)> = vec![(40, 25), (30, 15), (40, 30)];
     pub static ref SELECTED_BITMAPS: Vec<[bool; 3]> = ALL_COLOURS
         .iter()
         .map(|&colour| enum_to_bitmap(colour))
