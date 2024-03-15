@@ -15,10 +15,14 @@ def parse_json():
     filename = ""
     file_ext = "-data.json"
     if len(command_arguments) > 0:
-        filename = command_arguments[0]
+        (filename, _) = os.path.splitext(command_arguments[0])
+        (dirs, basename) = os.path.split(filename)
 
-        if len(command_arguments) > 1:
-            file_ext = command_arguments[1]
+        dirs = dirs.split('/')
+        if dirs[0].lower() == "res":
+            dirs[0] = "data"
+            dirs.append(basename)
+            filename = '/'.join(dirs)
     else:
         print("Please enter a filename")
         return
@@ -50,7 +54,7 @@ def colour_from_index(i):
 
     return "#{r:02X}{g:02X}{b:02X}".format(r = rgb[0], g = rgb[1], b = rgb[2])   
 
-def get_time_period(positions, plt):
+def get_time_period(positions, plot, transform):
     (width, prominence) = (15, 0.004)
     (peak_indices, info) = find_peaks(-positions[0], width=width, prominence=prominence)
     (left_ips, right_ips) = (info.get("left_ips"), info.get("right_ips"))
@@ -58,7 +62,7 @@ def get_time_period(positions, plt):
     filtered_diff = consecutive_diff[np.where(consecutive_diff > 10)]
     period = np.sum(filtered_diff) / (len(filtered_diff) * fps)
 
-    plt.text(len(positions[0])/fps * 0.8, min(positions[0]) * 0.8, f"$T_0 = {{{period:.3f}}}\,s$", fontsize='x-large')
+    plot.text(len(positions[0])/fps * 0.9, min(positions[0]) * 0.9, f"$T_0 = {{{period:.3f}}}\,s$", fontsize='x-large')
 
 def get_peak_indices(position):
     epsilon = 120
@@ -201,7 +205,7 @@ def plot_data(positions, stddev, filename):
     subplot.margins(x=0.01, y=0.01, tight=True)
     subplot.set_xticks(np.arange(t[0], t[-1]+time_step, step=time_step))
 
-    get_time_period(equilibrium_positions, subplot)
+    get_time_period(equilibrium_positions, subplot, subplot.bbox.transformed(plt.gca().transAxes))
 
     fig.tight_layout(pad=2.0)
     fig.savefig(f"{filename}-positions.pdf")

@@ -150,8 +150,7 @@ fn main() -> Result<(), ProcessorError> {
 
     if SHOW_PLOT {
         Command::new("src/plot.py")
-            .arg(json_filename_and_ext.0)
-            .arg(json_filename_and_ext.1)
+            .arg(format!("{output_folder}/{input_name}.{input_ext}"))
             .spawn()?;
     }
 
