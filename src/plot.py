@@ -8,6 +8,9 @@ from scipy.signal import peak_widths,find_peaks,argrelmax,correlate
 from scipy.optimize import curve_fit
 
 fps = 240
+(ball_width_pixels, ball_width_metres) = (50, 0.02217)
+pixel_scale_factor = ball_width_metres / ball_width_pixels
+ball_mass = 0.044756
 
 def parse_json():
     command_arguments = sys.argv[1:]
@@ -117,25 +120,20 @@ def damped_sine(t, A, b, omega, phi):
     return A * np.cos(omega*t - phi) * np.exp(b * t) 
 
 def plot_data(positions, stddev, filename):
-    (ball_width_pixels, ball_width_metres) = (50, 0.02217)
-    pixel_scale_factor = ball_width_metres / ball_width_pixels
-    ball_mass = 0.044756
-    conv_width = 15
+    conv_width = 10
     time_step = 2.5
     
     x_positions = [np.convolve(pos[:,1], np.ones(conv_width), 'valid') / conv_width for pos in positions]
 
     # Font Sizes
-
     fontsize = 14
-    plt.rc('font', size=fontsize) #controls default text size
-    plt.rc('axes', titlesize=fontsize) #fontsize of the title
-    plt.rc('axes', labelsize=fontsize) #fontsize of the x and y labels
-    plt.rc('xtick', labelsize=fontsize) #fontsize of the x tick labels
-    plt.rc('ytick', labelsize=fontsize) #fontsize of the y tick labels
-    plt.rc('legend', fontsize=fontsize) #fontsize of the legend
+    plt.rc('font', size=fontsize)
+    plt.rc('axes', titlesize=fontsize)
+    plt.rc('axes', labelsize=fontsize)
+    plt.rc('xtick', labelsize=fontsize)
+    plt.rc('ytick', labelsize=fontsize)
+    plt.rc('legend', fontsize=fontsize)
 
-    # fig, subplots = plt.subplots(2,1)
     (fig, subplot) = plt.subplots(1,1)
     fig.suptitle(f"Analysis of {filename}", x=0.518, y=0.98 , horizontalalignment="center")
     fig.set_size_inches((1920 / 100, 1080 / 100), forward=True)
@@ -163,6 +161,8 @@ def plot_data(positions, stddev, filename):
     # (param, _) = curve_fit(exp_func, t, -np.array(peak_heights), p0=(1,-1))
     # subplot.plot(t, exp_func(t, *param), '-', label=r"$y = {:.2f}e^{{{:.2f}t}}$".format(*param), color='r', lw=1)
 
+    get_time_period(equilibrium_positions, subplot, subplot.bbox.transformed(plt.gca().transAxes))
+
     # (peak_indices, peak_heights) = get_peak_indices(equilibrium_positions[-1])
     # t = np.linspace(t[0], t[-1], num=len(peak_indices))
     # (param, _) = curve_fit(exp_func, t, peak_heights, p0=(1,-1))
@@ -177,26 +177,24 @@ def plot_data(positions, stddev, filename):
     # subplot.plot(t, filtered_pos, '-', label="Ball {i} Position", color='b', lw=1)
 
     t = np.linspace(t[0], t[-1], num=len(equilibrium_positions[0])) 
-    smoothed_stddev = [(np.convolve(std, np.ones(conv_width), 'valid') / conv_width) for std in stddev]
-    bottom_stddev = [np.subtract(equilibrium_positions[i], smoothed_stddev[i] * pixel_scale_factor) for i in range(0, len(equilibrium_positions))];
-    top_stddev = [np.add(equilibrium_positions[i], smoothed_stddev[i] * pixel_scale_factor) for i in range(0, len(equilibrium_positions))];
+    smoothed_stddev = [(np.convolve(std * pixel_scale_factor, np.ones(conv_width), 'valid') / conv_width) for std in stddev]
+    # smoothed_stddev = [(np.convolve(std, np.ones(conv_width), 'valid') / conv_width) for std in stddev]
 
     energies = [0.5 * ball_mass * ((np.diff(pos)/np.diff(t)) ** 2) for pos in equilibrium_positions]
-    total_energy = np.sum(energies, axis=0)
-    total_energy = np.convolve(total_energy, np.ones(conv_width), 'valid') / conv_width
+    total_energy = np.convolve(np.sum(energies, axis=0), np.ones(conv_width), 'valid') / conv_width
 
-    freq = np.fft.fftfreq(len(x_positions[0])).real
-    ffts = [np.fft.fft(positions).real for positions in equilibrium_positions]
+    # freq = np.fft.fftfreq(len(x_positions[0])).real
+    # ffts = [np.fft.fft(positions).real for positions in equilibrium_positions]
 
     for i in range(0, len(equilibrium_positions)):
         col = colour_from_index(i)
 
         ## Absolute positions of the balls
         # subplot.plot(t, x_positions[i], '-', label="Ball {i} Position".format(i=i+1), color=col, lw=1)
-        # subplot.fill_between(t, x_positions[i] - ball_width_pixels/2, x_positions[i] + ball_width_pixels/2, color=col, alpha=0.25)
+        # subplot.fill_between(t, x_positions[i] - smoothed_stddev[i], x_positions[i] + smoothed_stddev[i], color=col, alpha=0.25)
         
         subplot.plot(t, equilibrium_positions[i], '-', label="Ball {i} Displacement".format(i=i+1), color=col, lw=1)
-        # subplot.fill_between(t, bottom_stddev[i], top_stddev[i], color=col, alpha=0.25)
+        subplot.fill_between(t, equilibrium_positions[i] - smoothed_stddev[i], equilibrium_positions[i] + smoothed_stddev[i], color=col, alpha=0.25)
 
     subplot.set_title("$x$-Displacement Over Time")
     subplot.set_xlabel("$t$ [s]")
@@ -204,8 +202,6 @@ def plot_data(positions, stddev, filename):
     subplot.legend(ncols=len(equilibrium_positions))
     subplot.margins(x=0.01, y=0.01, tight=True)
     subplot.set_xticks(np.arange(t[0], t[-1]+time_step, step=time_step))
-
-    get_time_period(equilibrium_positions, subplot, subplot.bbox.transformed(plt.gca().transAxes))
 
     fig.tight_layout(pad=2.0)
     fig.savefig(f"{filename}-positions.pdf")
@@ -215,7 +211,6 @@ def plot_data(positions, stddev, filename):
     fig.suptitle(f"Analysis of {filename}", x=0.518, y=0.98 , horizontalalignment="center")
     fig.set_size_inches((1920 / 100, 1080 / 100), forward=True)
     fig.set_dpi(120)
-    fig.tight_layout(pad=2.0)
     # plt.figlegend(ncols=len(x_positions) / 2, bbox_to_anchor=(1, 0.5), markerscale=10000, alignment="center", framealpha=1)
 
     # for i in range(0, len(energies)):
