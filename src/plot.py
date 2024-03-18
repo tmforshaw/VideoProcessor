@@ -69,22 +69,21 @@ def get_time_period(positions, plot, transform):
 
 def get_peak_indices(position):
     epsilon = 120
-    width  = 15
-    height_0 = max(position) * 0.1
+    width  = 5
+    height = max(position) * 0.1
 
-    (peak_indices_0, info_0) = find_peaks(position, width=width, height=height_0, prominence=0.001)
-    peak_heights_0 = info_0["peak_heights"]
+    (peak_indices, info) = find_peaks(position, width=width, height=height, prominence=0.001)
+    peak_heights = info["peak_heights"]
 
-    consecutive_diff_x_0 = np.abs(peak_indices_0[:-1] - peak_indices_0[1:])
+    consecutive_diff_x = np.abs(peak_indices[:-1] - peak_indices[1:])
 
-    filtered_indices_0 = []
-    filtered_heights_0 = []
-    for (loop_index, (i1, i2)) in enumerate(zip(peak_indices_0[:-1], peak_indices_0[1:])):
+    filtered_indices, filtered_heights = [], []
+    for (loop_index, (i1, i2)) in enumerate(zip(peak_indices[:-1], peak_indices[1:])):
         if abs(i1 - i2) > width * 0.9:
-            filtered_indices_0.append(peak_indices_0[loop_index])
-            filtered_heights_0.append(peak_heights_0[loop_index])
+            filtered_indices.append(peak_indices[loop_index])
+            filtered_heights.append(peak_heights[loop_index])
 
-    return (filtered_indices_0, filtered_heights_0)
+    return (filtered_indices, filtered_heights)
 
 def exp_func(x, a, k):
     return a * np.exp(k*x)
@@ -220,7 +219,7 @@ def plot_data(positions, stddev, filename):
     #     # subplot.fill_between(t, bottom_stddev[i], top_stddev[i], color=col, alpha=0.25)
     
 
-    # (energy_loss, fit_param) = find_amplitude_loss(t, total_energy, subplot, ball_mass)
+    (energy_loss, fit_param) = find_amplitude_loss(t, total_energy, subplot, ball_mass)
     
     plt.title("Total Kinetic Energy Over Time")
     plt.plot(np.linspace(t[0],t[-1], num=len(total_energy)), total_energy, '-', label="Kinetic Energy", color='b', lw=1)
