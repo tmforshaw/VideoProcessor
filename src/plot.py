@@ -65,7 +65,7 @@ def get_time_period(positions, plot, transform):
     filtered_diff = consecutive_diff[np.where(consecutive_diff > 10)]
     period = np.sum(filtered_diff) / (len(filtered_diff) * fps)
 
-    plot.text(len(positions[0])/fps * 0.9, min(positions[0]) * 0.9, f"$T_0 = {{{period:.3f}}}\,s$", fontsize='x-large')
+    plot.text(len(positions[0])/fps * 0.85, min(positions[0]) * 0.9, f"$T_0 = {{{period:.3f}}}\,s$", fontsize='x-large')
 
 def get_peak_indices(position):
     epsilon = 120
@@ -104,13 +104,13 @@ def find_amplitude_loss(t, y_data, plt, ball_mass):
     filtered_heights = peak_heights[filtered_indices]
 
     t_0 = np.linspace(t[0]+cutoff_index / fps, t[-1], num=len(filtered_heights))
-    # (param, _) = curve_fit(exp_func, t_0, filtered_heights, p0=(1,-1))
+    (param, _) = curve_fit(exp_func, t_0, filtered_heights, p0=(1,-1))
 
     # for index in peak_indices[filtered_indices]:
     #     plt.axvline(x=(index+cutoff_index)/fps)
 
     # plt.text(max(t) * 0.8, max(y_cutoff) * 0.7, "{:f}".format(param[1] * 2 * ball_mass))
-    # plt.plot(t_0, exp_func(t_0, *param), '-', label=r"$y = {:.2f}e^{{{:.2f}t}}$".format(*param), color='r', lw=1)
+    plt.plot(t_0, exp_func(t_0, *param), '-', label=r"$y = {:.4f}e^{{{:.2f}t}}$".format(*param), color='r', lw=1)
 
     param = [1,1]
     
@@ -126,7 +126,7 @@ def plot_data(positions, stddev, filename):
     x_positions = [np.convolve(pos[:,1], np.ones(conv_width), 'valid') / conv_width for pos in positions]
 
     # Font Sizes
-    fontsize = 14
+    fontsize = 18
     plt.rc('font', size=fontsize)
     plt.rc('axes', titlesize=fontsize)
     plt.rc('axes', labelsize=fontsize)
@@ -194,12 +194,12 @@ def plot_data(positions, stddev, filename):
         # subplot.fill_between(t, x_positions[i] - smoothed_stddev[i], x_positions[i] + smoothed_stddev[i], color=col, alpha=0.25)
         
         subplot.plot(t, equilibrium_positions[i], '-', label="Ball {i} Displacement".format(i=i+1), color=col, lw=1)
-        subplot.fill_between(t, equilibrium_positions[i] - smoothed_stddev[i], equilibrium_positions[i] + smoothed_stddev[i], color=col, alpha=0.25)
+        # subplot.fill_between(t, equilibrium_positions[i] - smoothed_stddev[i], equilibrium_positions[i] + smoothed_stddev[i], color=col, alpha=0.25)
 
     subplot.set_title("$x$-Displacement Over Time")
     subplot.set_xlabel("$t$ [s]")
     subplot.set_ylabel("$x$-Displacement [m]")
-    subplot.legend(ncols=len(equilibrium_positions))
+    subplot.legend(ncols=(len(equilibrium_positions)/2).__ceil__())
     subplot.margins(x=0.01, y=0.01, tight=True)
     subplot.set_xticks(np.arange(t[0], t[-1]+time_step, step=time_step))
 
@@ -220,13 +220,13 @@ def plot_data(positions, stddev, filename):
     #     # subplot.fill_between(t, bottom_stddev[i], top_stddev[i], color=col, alpha=0.25)
     
 
-    # (energy_loss, fit_param)= find_amplitude_loss(t, total_energy, subplot, ball_mass)
-
+    # (energy_loss, fit_param) = find_amplitude_loss(t, total_energy, subplot, ball_mass)
+    
     plt.title("Total Kinetic Energy Over Time")
     plt.plot(np.linspace(t[0],t[-1], num=len(total_energy)), total_energy, '-', label="Kinetic Energy", color='b', lw=1)
     plt.xlabel("$t$ [s]")
     plt.ylabel("Total Kinetic Energy [J]")
-    plt.legend(ncols=len(x_positions)/2)
+    plt.legend(ncols=(len(x_positions) / 2).__ceil__())
     plt.margins(x=0.01, y=0.01, tight=True)
     plt.xticks(np.arange(t[0], t[-1]+time_step, step=time_step))
 
