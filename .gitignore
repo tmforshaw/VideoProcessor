@@ -1,5 +1,4 @@
 # Exclude all except specified directories
-*
-!/src
-!README.md
-!Cargo.toml
+target/
+Cargo.lock
+.git/

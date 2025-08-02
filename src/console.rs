@@ -1,6 +1,6 @@
 use std::{env, fs, path::PathBuf, time::Instant};
 use term::color::{self, Color};
-use video_rs::{Decoder, Encoder, EncoderSettings};
+use video_rs::{encode::Settings, Decoder, Encoder, Location};
 
 use crate::error::ProcessorError;
 
@@ -87,12 +87,7 @@ pub fn process_args(
 
         // let destination = format!("{destination_folder}/{source_name}-output.{source_ext}");
 
-        (
-            source,
-            (dest_path, destination),
-            filename.to_string(),
-            source_ext.to_string(),
-        )
+        (source, (dest_path, destination), filename.to_string(), source_ext.to_string())
     } else {
         println!("Using default source and destination video filepaths.");
         (
@@ -115,29 +110,20 @@ pub fn process_args(
 
     match video_rs::init() {
         Ok(it) => it,
-        Err(err) => {
-            return Err(ProcessorError::VideoRsErr {
-                err: err.to_string(),
-            })
-        }
+        Err(err) => return Err(ProcessorError::VideoRsErr { err: err.to_string() }),
     };
 
-    let decoder = Decoder::new(&PathBuf::from(source).into())?;
+    let decoder = Decoder::new(&Into::<Location>::into(PathBuf::from(source)))?;
     let size = decoder.size();
 
     writeln!(term, "    {size:?}\n\n\n",)?;
 
     let encoder = Encoder::new(
-        &PathBuf::from(full_destination).into(),
-        EncoderSettings::for_h264_yuv420p(size.0 as usize, size.1 as usize, false),
+        &Into::<Location>::into(PathBuf::from(full_destination)),
+        Settings::preset_h264_yuv420p(size.0 as usize, size.1 as usize, false),
     )?;
 
-    Ok((
-        decoder,
-        encoder,
-        size,
-        (source_name, source_ext, dest_no_name),
-    ))
+    Ok((decoder, encoder, size, (source_name, source_ext, dest_no_name)))
 }
 
 pub fn print_timing_info(
@@ -170,7 +156,10 @@ pub fn print_timing_info(
         format!("{:.2}s", video_position),
         format!("{:.2}s", (time_now - start_time).as_secs_f32()),
         format!("{:.2}ms", (time_now - before_time).as_micros() as f32 / 1000f32),
-        format!("{:.2}ms", ((time_now - start_time).as_micros() as f32 / 1000f32) / (iteration_index as f32 + 1f32))
+        format!(
+            "{:.2}ms",
+            ((time_now - start_time).as_micros() as f32 / 1000f32) / (iteration_index as f32 + 1f32)
+        )
     )?;
     term.reset()?;
 
@@ -197,11 +186,7 @@ pub fn print_final_timing_info(
     term.reset()?;
     write!(term, " frames [")?;
     term.fg(HIGHLIGHT_COLOUR)?;
-    write!(
-        term,
-        "{:.2}ms",
-        time_elapsed_ms / (final_index as f32 + 1f32)
-    )?;
+    write!(term, "{:.2}ms", time_elapsed_ms / (final_index as f32 + 1f32))?;
     term.reset()?;
     writeln!(term, " per frame]")?;
 

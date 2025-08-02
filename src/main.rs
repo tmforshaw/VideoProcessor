@@ -43,16 +43,17 @@
     clippy::too_many_lines
 )]
 
-use std::{process::Command, time::Instant};
-
-use term::Error;
-use video_rs::Time;
-
 pub mod colour;
 mod console;
 pub mod error;
 mod image;
 mod json;
+
+use std::{process::Command, time::Instant};
+
+use term::Error;
+
+use video_rs::Time;
 
 use console::{print_final_timing_info, print_timing_info, process_args};
 use error::ProcessorError;
@@ -85,8 +86,7 @@ fn main() -> Result<(), ProcessorError> {
     let duration = Time::from_nth_of_a_second(24);
     let mut position = Time::zero();
 
-    let (mut decoder, mut encoder, size, (input_name, input_ext, output_folder)) =
-        process_args(&mut term)?;
+    let (mut decoder, mut encoder, size, (input_name, input_ext, output_folder)) = process_args(&mut term)?;
 
     let mut final_index = 0;
 
@@ -101,12 +101,12 @@ fn main() -> Result<(), ProcessorError> {
         .map(Result::unwrap)
         .enumerate()
         .map(|(i, (_, frame))| -> Result<_, ProcessorError> {
-            position = position.aligned_with(&duration).add();
+            position = position.aligned_with(duration).add();
 
             let (frame_new, avg_positions, stddev) = process(frame, size)?;
 
             if WRITE_TO_VIDEO {
-                encoder.encode(&frame_new, &position)?;
+                encoder.encode(&frame_new, position)?;
             }
 
             print_timing_info(&mut term, start_time, before_time, position.as_secs(), i)?;
@@ -117,10 +117,7 @@ fn main() -> Result<(), ProcessorError> {
             Ok((avg_positions, stddev))
         })
         .try_fold(
-            (
-                vec![Vec::new(); ALL_COLOURS.len()],
-                vec![Vec::new(); ALL_COLOURS.len()],
-            ),
+            (vec![Vec::new(); ALL_COLOURS.len()], vec![Vec::new(); ALL_COLOURS.len()]),
             |mut acc, res| -> Result<_, ProcessorError> {
                 let (all_positions, stddev) = res?;
 
@@ -135,10 +132,7 @@ fn main() -> Result<(), ProcessorError> {
 
     print_final_timing_info(&mut term, start_time, final_index)?;
 
-    let json_filename_and_ext = (
-        format!("{output_folder}/{input_name}"),
-        String::from("-data.json"),
-    );
+    let json_filename_and_ext = (format!("{output_folder}/{input_name}"), String::from("-data.json"));
 
     positions_to_json(&avg_positions, &stddevs, &json_filename_and_ext)?;
 
